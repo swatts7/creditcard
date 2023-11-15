@@ -1,51 +1,56 @@
+
+import streamlit as st
 import requests
 from bs4 import BeautifulSoup
-import csv
+import openai
+import pandas as pd
 
-def scrape_data(url):
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
+# Streamlit app layout
+st.title("Credit Card Information Extractor")
 
-        soup = BeautifulSoup(response.content, 'html.parser')
+# User inputs
+api_key = st.text_input("Enter your OpenAI API Key")
+url_input = st.text_area("Enter URLs (one per line)")
+if st.button("Extract Data"):
+    if not api_key or not url_input:
+        st.warning("Please provide both API Key and URLs.")
+    else:
         data = []
-
-        # Extracting required information
-        labels = soup.find_all('span', class_='cmp-banner-product-right-aligned__feature--subtext cmp-text')
-        values = soup.find_all('span', class_='cmp-banner-product-right-aligned__feature--text--number')
-
-        for label, value in zip(labels, values):
-            if 'Annual Fee' in label.text:
-                data.append(value.text.strip())
-            elif 'Interest: Purchases' in label.text:
-                data.append(value.text.strip())
-            elif 'Interest: Cash Advance' in label.text:
-                data.append(value.text.strip())
-            elif 'Additional Cardholder' in label.text:
-                data.append(value.text.strip())
-
-        return data
-    except requests.HTTPError as http_err:
-        print(f"HTTP error occurred: {http_err}")
-    except Exception as err:
-        print(f"An error occurred: {err}")
-
-def main(urls):
-    # CSV file headers
-    headers = ['URL', 'Annual Fee', 'Purchase Interest Rate', 'Cash Advance Interest Rate', 'Additional Cardholder Fee']
-
-    with open('credit_card_data.csv', 'w', newline='', encoding='utf-8') as file:
-        writer = csv.writer(file)
-        writer.writerow(headers)
-
+        urls = url_input.split('\n')
         for url in urls:
-            data = scrape_data(url)
-            if data:
-                writer.writerow([url] + data)
+            try:
+                # Scraping web page content
+                response = requests.get(url)
+                content = response.text
 
-# List of URLs to scrape
-urls = [
-    # Add your URLs here
-]
+                # OpenAI API request for each piece of data
+                openai.api_key = api_key
+                questions = ["What is the annual fee?", 
+                             "What is the purchase interest rate?",
+                             "What is the cash advance interest rate?",
+                             "What is the additional card holder fee?"]
 
-main(urls)
+                answers = []
+                for question in questions:
+                    response = openai.Completion.create(
+                        engine="text-davinci-003",
+                        prompt=f"Extract the following information from the text: {question}\n\n{content}",
+                        max_tokens=50
+                    )
+                    answers.append(response.choices[0].text.strip())
+
+                # Appending results
+                data.append([url] + answers)
+            except Exception as e:
+                st.error(f"Error processing {url}: {str(e)}")
+
+        # Creating DataFrame and downloading Excel file
+        df = pd.DataFrame(data, columns=["URL", "Annual Fee", "Purchase Interest Rate", 
+                                         "Cash Advance Interest Rate", "Additional Card Holder Fee"])
+        st.dataframe(df)
+        df.to_excel("credit_card_info.xlsx", index=False)
+        st.download_button("Download Data", "credit_card_info.xlsx")
+
+# Run the app
+if __name__ == "__main__":
+    st.run()
