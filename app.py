@@ -51,6 +51,4 @@ if st.button("Extract Data"):
         df.to_excel("credit_card_info.xlsx", index=False)
         st.download_button("Download Data", "credit_card_info.xlsx")
 
-# Run the app
-if __name__ == "__main__":
-    st.run()
+
